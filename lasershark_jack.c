@@ -181,8 +181,10 @@ Converts from one linear scale to another in the sexiest manner possible, with m
 */
 static uint16_t convert(float OldValue, float OldMin, float OldMax, uint32_t NewMax, uint32_t NewMin)
 {
-
-    uint16_t val = (uint16_t)((((OldValue - OldMin) * (float)(NewMax - NewMin)) / (OldMax - OldMin)) + (float)NewMin);
+    float v = (OldValue - OldMin) / (OldMax - OldMin);
+    if (v > 1.0) v = 1.0;
+    if (v < 0) v = 0.0;
+    uint16_t val = (uint16_t)((v * (float)(NewMax - NewMin)) + (float)NewMin);
     return val;
 }
 
@@ -200,7 +202,7 @@ with multiple different lasershark versions... but for now, it's good enough.
 */
 static int process (nframes_t nframes, void *arg)
 {
-    uint16_t temp[4];
+    uint16_t temp[6];
     int avail, written, i, j, rc;
     nframes_t frm;
 
@@ -214,17 +216,26 @@ static int process (nframes_t nframes, void *arg)
     for (frm = 0; frm < nframes; frm++)
     {
         // Read the data and convert it to a format suitable to be sent out to the lasershark.
-        temp[0] = convert(*i_r++, -0.0f, 1.0f, lasershark_dac_max_val, lasershark_dac_min_val);
-        temp[1] = convert(*i_g++, -0.0f, 1.0f, lasershark_dac_max_val, lasershark_dac_min_val);
-        if (convert(*i_b++, -0.0f, 1.0f, lasershark_dac_max_val, lasershark_dac_min_val) >= 
-		(lasershark_dac_max_val + lasershark_dac_min_val)/2) {
-		temp[0] |= LASERSHARK_C_BITMASK; // If the laser power is >= half the dac output.. turn this ttl channel on.
-	}
-	temp[0] |= LASERSHARK_INTL_A_BITMASK; // Turn on the interlock pin since this is a valid sample.
-
         temp[2] = convert(*i_x++, -1.0f, 1.0f, lasershark_dac_max_val, lasershark_dac_min_val);
-        temp[3] = convert(*i_y++ * -1.0f, -1.0f, 1.0f, lasershark_dac_max_val, lasershark_dac_min_val);
+        temp[3] = convert(*i_y++, -1.0f, 1.0f, lasershark_dac_max_val, lasershark_dac_min_val);
+//         if (convert(*i_b++, -0.0f, 1.0f, lasershark_dac_max_val, lasershark_dac_min_val) >= 
+//             (lasershark_dac_max_val + lasershark_dac_min_val)/2) {
+//             temp[0] |= LASERSHARK_C_BITMASK; // If the laser power is >= half the dac output.. turn this ttl channel on.
+//         }
+//         temp[0] |= LASERSHARK_INTL_A_BITMASK; // Turn on the interlock pin since this is a valid sample.
 
+        temp[0] = convert(*i_r++, 0.0f, 1.0f, 0xff, 0x00) | (convert(*i_g++, 0.0f, 1.0f, 0xff, 0x00) << 8);
+        temp[1] = convert(*i_b++, 0.0f, 1.0f, 0xff, 0x00);
+        //temp[3] = convert(*i_r++ * -1.0f, -1.0f, 1.0f, lasershark_dac_max_val, lasershark_dac_min_val);
+
+        //temp[0] = 0;
+        //temp[1] = 0;
+        //temp[2] = 0xffff;
+        //temp[3] = 0x0000;
+        //temp[0] = 0x0000;
+        //temp[1] = 0x00ff;
+        //temp[0] = 0;
+        //temp[1] = 0;
         // Jam the samples in the ringbuffer.
         avail = jack_ringbuffer_write_space(jack_rb);
         if (avail >= lasershark_samp_element_count*sizeof(uint16_t))
@@ -396,11 +407,11 @@ int main (int argc, char *argv[])
         printf("Your FW is not capable of proper bulk transfers or clear commands. Consider upgrading your firmware!\n");
     } else {
         printf("Firmware supports ring buffer clears. Clearing now.\n");
-        rc = clear_ringbuffer(devh_ctl);
-        if (rc != LASERSHARK_CMD_SUCCESS) {
-            printf("Clearing ringbuffer buffer failed.\n");
-            goto out; 
-        }
+        //rc = clear_ringbuffer(devh_ctl);
+        //if (rc != LASERSHARK_CMD_SUCCESS) {
+        //    printf("Clearing ringbuffer buffer failed.\n");
+        //    goto out; 
+        //}
     }
 
     max_iso_data_len = libusb_get_max_iso_packet_size(libusb_get_device(devh_data), (4 | LIBUSB_ENDPOINT_OUT));
